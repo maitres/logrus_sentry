@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	raven "github.com/getsentry/raven-go"
+	"github.com/getsentry/raven-go"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -45,6 +45,7 @@ type SentryHook struct {
 	ignoreFields  map[string]struct{}
 	extraFilters  map[string]func(interface{}) interface{}
 	errorHandlers []func(entry *logrus.Entry, err error)
+	fireHandlers  []func(entry *logrus.Entry)
 
 	asynchronous bool
 
@@ -165,6 +166,10 @@ func setAsync(hook *SentryHook) *SentryHook {
 func (hook *SentryHook) Fire(entry *logrus.Entry) error {
 	hook.mu.RLock() // Allow multiple go routines to log simultaneously
 	defer hook.mu.RUnlock()
+
+	for _, handlerFn := range hook.fireHandlers {
+		handlerFn(entry)
+	}
 
 	df := newDataField(entry.Data)
 
@@ -368,6 +373,11 @@ func (hook *SentryHook) AddExtraFilter(name string, fn func(interface{}) interfa
 // AddErrorHandler adds a error handler function used when Sentry returns error.
 func (hook *SentryHook) AddErrorHandler(fn func(entry *logrus.Entry, err error)) {
 	hook.errorHandlers = append(hook.errorHandlers, fn)
+}
+
+// AddFireHandler adds a fire handler function executes before firing to sentry.
+func (hook *SentryHook) AddFireHandler(fn func(entry *logrus.Entry)) {
+	hook.fireHandlers = append(hook.fireHandlers, fn)
 }
 
 func (hook *SentryHook) formatExtraData(df *dataField) (result map[string]interface{}) {
